@@ -41,7 +41,14 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-// Não precisamos de muitas variáveis globais nesta versão simples
+
+float o2_concent = 0.0;
+float o2_concent1 = 0;
+float o2_flow = 0;
+uint8_t o2_humi = 0;
+uint8_t o2_temp = 0;
+uint8_t temp_u8 = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,7 +76,8 @@ int main(void)
 
   /* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+  /* MCU Configuration-------
+   * -------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
@@ -90,64 +98,56 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  // Buffer para formatar a mensagem de saída
-  char tx_buffer[50];
-  // Mensagem inicial para sabermos que o programa iniciou
-  int len = sprintf(tx_buffer, "Iniciando leitor UART em modo pooling...\r\n");
-  HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-  /* USER CODE END 2 */
 
-  /* Initialize leds */
-  BSP_LED_Init(LED_GREEN);
+  // Buffer para formatar a mensagem de saída
+  char tx_buffer[80];
+  // Mensagem inicial para sabermos que o programa iniciou
+  int len = sprintf(tx_buffer, "Iniciando leitura do sensor OCS-3F620 em modo pooling...\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
+
+  /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     uint8_t received_byte[12] = {0,0,0,0,0,0,0,0,0,0,0,0}; // Variável para armazenar os 12 bytes que chegar
-    uint8_t temp_u8 = 0;
 
-    len = sprintf(tx_buffer, "O valor de temp e: 0x%02X\r\n", temp_u8);
-    HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
+    //Leitura dos 12 bytes de dados
+    HAL_UART_Receive(&huart1, received_byte, 12, 1000);
+    temp_u8 = 0;
 
-
-    //Leitura dos 12 bytes
-    HAL_StatusTypeDef status = HAL_UART_Receive(&huart1, &received_byte, 12, 500);
-
-    for(int i = 0; i < 12; i++)temp_u8 += huart1.pRxBuffPtr[i];
+    //Verificação dos 12 bytes para validar os dados
+    for(int i = 0; i < 12; i++)temp_u8 += received_byte[i];
+    (temp_u8 = 0x00 - temp_u8);
 
     // Se o byte foi recebido com sucesso...
-    if (status == HAL_OK)
+    if ((received_byte[0] == 0x16) && (received_byte[1] == 0x09) && (received_byte[2] == 0x01) && (temp_u8 == 0))
     {
-      // Formata o byte recebido em formato hexadecimal (ex: 0x16, 0x09, etc.)
-      // O formato %02X garante dois dígitos e letra maiúscula (ex: 0A em vez de a).
-      len = sprintf(tx_buffer, "1 Byte Recebido: 0x%02X\r\n", received_byte[0]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "2 Byte Recebido: 0x%02X\r\n", received_byte[1]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "3 Byte Recebido: 0x%02X\r\n", received_byte[2]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "4 Byte Recebido: 0x%02X\r\n", received_byte[3]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "5 Byte Recebido: 0x%02X\r\n", received_byte[4]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "6 Byte Recebido: 0x%02X\r\n", received_byte[5]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "7 Byte Recebido: 0x%02X\r\n", received_byte[6]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "8 Byte Recebido: 0x%02X\r\n", received_byte[7]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "9 Byte Recebido: 0x%02X\r\n", received_byte[8]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "10 Byte Recebido: 0x%02X\r\n", received_byte[9]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "11 Byte Recebido: 0x%02X\r\n", received_byte[10]);
-      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
-      len = sprintf(tx_buffer, "12 Byte Recebido: 0x%02X\r\n", received_byte[11]);
+      len = sprintf(tx_buffer, "\n");
       HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
 
-      // Pisca o LED para dar um feedback visual de que algo foi recebido
-      BSP_LED_Toggle(LED_GREEN);
+      //Calculo da porcentagem de oxigênio
+      o2_concent = ((float)(received_byte[3]*256 + received_byte[4])/10);
+      len = sprintf(tx_buffer, "Concentracao de oxigênio misto: %.1f (porcento)\r\n", o2_concent);
+      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
+
+      //Calculo da vazão
+      o2_flow = ((float)(received_byte[5]*256 + received_byte[6])/10);
+      len = sprintf(tx_buffer, "Fluxo de gas: %.1f (L/min)\r\n", o2_flow);
+      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
+
+      //Calculo da temperatura
+      o2_temp = (received_byte[8]); //unidade da temperatura
+      o2_humi = (received_byte[7]); //decimal da temperatura
+      len = sprintf(tx_buffer, "Temperatura do gas: %d.%d ºC\r\n", o2_temp, o2_humi);
+      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);
+
+      //Também é uma concentração, porém, o datasheet não especifica e sequer utiliza no seu exemplo, por isso está comentado
+      /*o2_concent1 = ((float)(received_byte[9]*256 + received_byte[10])/10);
+      len = sprintf(tx_buffer, "Concentracao de oxigênio puro: %.1f (porcento)\r\n", o2_concent1);
+      HAL_UART_Transmit(&huart2, (uint8_t*)tx_buffer, len, 100);*/
+
       HAL_Delay(1000);
     }
 
